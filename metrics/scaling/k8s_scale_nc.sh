@@ -22,6 +22,7 @@ nc_req_msg_len=${nc_req_msg_len:-1000}
 nc_port=33101
 # request message
 nc_req_msg=$(head -c $nc_req_msg_len /dev/zero | tr  '\0' 'x')
+nc_percentiles=(5 25 50 75 95)
 
 pod_command="[\"nc\", \"-lk\", \"-p\", \"${nc_port}\", \"-e\", \"/bin/cat\"]"
 
@@ -276,7 +277,7 @@ run() {
 	metrics_json_start_array
 
 	# grab starting stats before launching workload pods
-	grab_stats 0 0 0
+	grab_stats 0 0 ${nc_percentiles[@]}
 
 	for reqs in $(seq ${STEP} ${STEP} ${NUM_PODS}); do
 		info "Testing replicas ${reqs} of ${NUM_PODS}"
@@ -360,16 +361,22 @@ run() {
 			unset IFS
 			local latency_pod_array_len=${#latency_pod_array[@]}
 			local latency_percentiles=()
-			latency_percentiles+=(${latency_pod_array_sorted[$(bc <<<"$latency_pod_array_len / 20")]})
-			latency_percentiles+=(${latency_pod_array_sorted[$(bc <<<"$latency_pod_array_len / 4")]})
-			latency_percentiles+=(${latency_pod_array_sorted[$(bc <<<"$latency_pod_array_len / 2")]})
-			latency_percentiles+=(${latency_pod_array_sorted[$(bc <<<"$latency_pod_array_len / 1.25")]})
-			latency_percentiles+=(${latency_pod_array_sorted[$(bc <<<"$latency_pod_array_len / 1.05")]})
-			info "Latency percentiles [ms] 5-25-50-75-95 %: ${latency_percentiles[*]}"
+			for p in ${nc_percentiles[@]}; do
+				if [[ $p -lt 100 ]]; then
+					latency_percentiles+=(${latency_pod_array_sorted[$(bc <<<"$latency_pod_array_len * $p / 100")]})
+				else
+					# Asking for a value that is greater than 100 % of measured values.
+					# This is the way to save the maximum value.
+					latency_percentiles+=(${latency_pod_array_sorted[$(bc <<<"$latency_pod_array_len - 1")]})
+				fi
+			done
+			info "Latency percentiles [ms] ${nc_percentiles[@]} %: ${latency_percentiles[@]}"
 		else
 			local latency_avg_ms=0
-			local latency_percentiles=(0 0 0 0 0)
-
+			local latency_percentiles=()
+			for p in ${nc_percentiles[@]}; do
+				latency_percentiles+=(0)
+			done
 		fi
 
 		grab_stats $total_milliseconds $reqs ${latency_percentiles[@]}
