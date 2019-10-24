@@ -14,8 +14,10 @@ testnames=c(
 )
 
 ### For developers: uncomment following variables to run this as is in R
-# resultdirs=c("")
-# inputdir="PATH/TO/DIR/CONTAINING/testnames/WITH/ENDING/SLASH/"
+# resultdirs=c("PATH/TO/RES1/", ...) # keep the ending slash on result paths
+# inputdir=""
+
+latencydata=c()
 
 # iterate over every set of results (test run)
 for (currentdir in resultdirs) {
@@ -67,34 +69,46 @@ for (currentdir in resultdirs) {
 			#    100   4	8   10
 			#    200   5   11   15
 			#    300   6   14   19
+			ltpt$testname=testname
+			latencydata=rbind(latencydata, ltpt)
 		}
 	}
 }
 
-########## Output pod communication latency page ##############
-ltpp = ggplot(data=ltpt, aes(x=n_pods)) + ylab("Latency (ms)") + xlab("pods")
-# Highlight the middle percentile (usually median)
-# and symmetrically belittle other percentage lines
-perc_mid = floor((perc_count+1)/2)
-perc_maxdist = perc_mid - 1
-for (n in seq(perc_count)) {
-	# The sparser the dots the farther away the line is from the middle
-	perc_dist = abs(n-perc_mid)
-	if (perc_dist != 0) {
-		perc_linetype = paste0(2*(1+perc_maxdist-perc_dist), perc_dist+1)
-	} else {
-		perc_linetype = "solid"
+if (length(latencydata[[1]]) <= 20 && perc_count == 5) {
+	# Use boxplot when there are not too many boxes to draw
+	latp = ggplot(data=latencydata, aes(x=n_pods)) + ylab("Latency (ms)") + xlab("pods")
+	p=names(ltpt)[2:6]
+	latp = latp + geom_boxplot(aes_string(group="interaction(testname,n_pods)",ymin=p[1],lower=p[2],middle=p[3],upper=p[4],ymax=p[5],fill="testname"),stat="identity")
+} else {
+	# Use colored areas and median lines when there are many ticks on X axis
+	latp = ggplot(data=latencydata, aes(x=n_pods)) + ylab("Latency (ms)") + xlab("pods")
+	perc_mid = floor((perc_count)/2)
+	perc_maxdist = perc_mid
+	plot_number = 0
+	for (plot_test in unique(latencydata$testname)) {
+		plot_number = plot_number + 1
+		plot_color = plot_colors[plot_number]
+		for (n in seq(perc_mid)) {
+			# First fill outmost areas, like p5..p25 and p75..p95,
+			# then areas closer to the middle, like p25..p50 and p50..p75
+			lower_name = names(ltpt)[n+1]
+			lower_next_name = names(ltpt)[n+2]
+			upper_name = names(ltpt)[perc_count-n+2]
+			upper_prev_name = names(ltpt)[perc_count-n+1]
+			perc_dist = abs(n-perc_mid)
+			alpha = 0.4 * (n / perc_mid)**2
+			latp = latp + geom_ribbon(data=latencydata[latencydata$testname==plot_test,],aes_string(x="n_pods",ymin=lower_name,ymax=lower_next_name,fill="testname"),alpha=alpha)
+			latp = latp + geom_ribbon(data=latencydata[latencydata$testname==plot_test,],aes_string(x="n_pods",ymin=upper_prev_name,ymax=upper_name,fill="testname"),alpha=alpha)
+		}
+		# Draw median line
+		latp = latp + geom_line(data=latencydata[latencydata$testname==plot_test,],aes_string(x="n_pods",y=names(ltpt)[perc_mid+1],color="testname"))
 	}
-	ltpp = ltpp + geom_line(
-		aes_string(y=names(ltpt)[n+1]),
-		alpha=1.0 - 0.4 * (perc_dist/perc_maxdist),
-		linetype=perc_linetype,
-		color="blue")
 }
 
 cat("\n\nLatency percentiles illustrated in the Figure below: ", paste0(ltp_perc, "\\%"), "\n\n")
 
-page1 = grid.arrange(ltpp, ncol=1)
+page1 = grid.arrange(latp, ncol=1)
 
 # pagebreak, as the graphs overflow the page otherwise
 cat("\n\n\\pagebreak\n")
