@@ -218,7 +218,7 @@ EOF
 init() {
 	info "Initialising"
 
-	local cmds=("bc" "jq")
+	local cmds=("bc" "jq" "nc")
 	check_cmds "${cmds[@]}"
 
 	info "Checking Kubernetes accessible"
