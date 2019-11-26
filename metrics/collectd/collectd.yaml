@@ -19,7 +19,7 @@ spec:
       terminationGracePeriodSeconds: 0
       containers:
         - name: collectd
-          image: dklyle/alpine-collectd:1.0
+          image: askervin/alpine-collectd:1.0-mem
           imagePullPolicy: IfNotPresent
           securityContext:
             # Run a priv container so we really do measure what is happening on the
